@@ -12,11 +12,11 @@ if [ $UID -ne 0 ]; then
 fi
 
 # ==========================
-# 1. 安装 JDK 
+# 1. 安装 JDK11
 # ==========================
-echo -e "\n📦 正在安装 JDK ..."
+echo -e "\n📦 正在安装 JDK 11..."
 apt update > /dev/null 2>&1
-apt install -y jdk-openjdk > /dev/null 2>&1
+apt install -y openjdk-11-jdk > /dev/null 2>&1
 
 # ==========================
 # 2. 安装 Maven
@@ -25,25 +25,25 @@ echo -e "\n📦 正在安装 Maven..."
 apt install -y maven > /dev/null 2>&1
 
 # ==========================
-# 3. 配置环境变量（永久生效）
+# 3. 修复 JAVA_HOME（终极方案）
 # ==========================
-echo -e "\n⚙️  配置系统环境变量..."
-cat >> /etc/profile << 'EOF'
+echo -e "\n⚙️ 配置环境变量..."
+JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
 
-# Java & Maven Environment
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-export M2_HOME=/usr/share/maven
-export PATH=$PATH:$JAVA_HOME/bin:$M2_HOME/bin
-EOF
+echo "export JAVA_HOME=$JAVA_HOME" | tee /etc/environment /etc/profile.d/java.sh > /dev/null
+echo "export M2_HOME=/usr/share/maven" | tee -a /etc/environment /etc/profile.d/java.sh > /dev/null
+echo 'export PATH=$PATH:$JAVA_HOME/bin:$M2_HOME/bin' | tee -a /etc/environment /etc/profile.d/java.sh > /dev/null
 
-# 立即生效
-source /etc/profile
+chmod +x /etc/profile.d/java.sh
+source /etc/environment
+source /etc/profile.d/java.sh
 
 # ==========================
-# 4. 安装 web 命令工具
+# 4. 修复 web 命令（终极版）
 # ==========================
-echo -e "\n🔧 安装 web 快速命令..."
-tee /usr/local/bin/web > /dev/null << 'EOF'
+echo -e "\n🔧 安装 web 快捷命令..."
+
+cat > /usr/local/bin/web << 'EOF'
 #!/bin/bash
 GROUP_ID=""
 ARTIFACT_ID=""
@@ -51,48 +51,43 @@ RUN_PROJECT=""
 
 while getopts "g:p:r:" opt; do
   case $opt in
-    r) RUN_PROJECT=$OPTARG ;;
-    \?)
-      echo "用法："
-      echo "  创建项目：web -g 包名 -p 项目名"
-      echo "  快速运行：web -r 已存在项目名"
-      exit 1
-    ;;
+    g) GROUP_ID="$OPTARG" ;;
+    p) ARTIFACT_ID="$OPTARG" ;;
+    r) RUN_PROJECT="$OPTARG" ;;
+    *) echo "用法："
+       echo " 创建：web -g com.test -p myweb"
+       echo " 运行：web -r myweb"
+       exit 1 ;;
   esac
 done
 
-# 快速运行
+# 运行项目
 if [ -n "$RUN_PROJECT" ]; then
   if [ ! -d "$RUN_PROJECT" ]; then
     echo "❌ 项目 $RUN_PROJECT 不存在"
     exit 1
   fi
-  echo "==================================="
   echo "🚀 启动项目：$RUN_PROJECT"
-  echo "🌐 访问：http://localhost:8080/$RUN_PROJECT"
-  echo "==================================="
-  cd "$RUN_PROJECT" && mvn jetty:run
+  cd "$RUN_PROJECT" || exit 1
+  mvn jetty:run
   exit 0
 fi
 
 # 创建项目
 if [ -z "$GROUP_ID" ] || [ -z "$ARTIFACT_ID" ]; then
-  echo "❌ 用法：web -g com.test -p myweb"
-  echo "✅ 快速运行：web -r myweb"
+  echo "✅ 创建：web -g com.test -p myweb"
+  echo "✅ 运行：web -r myweb"
   exit 1
 fi
 
-echo "==================================="
-echo "📦 创建 Java Web 项目：$ARTIFACT_ID"
-echo "==================================="
-
+echo "📦 生成项目：$ARTIFACT_ID"
 mvn archetype:generate \
   -DgroupId="$GROUP_ID" \
   -DartifactId="$ARTIFACT_ID" \
   -DarchetypeArtifactId=maven-archetype-webapp \
   -DinteractiveMode=false
 
-cd "$ARTIFACT_ID" || exit
+cd "$ARTIFACT_ID" || exit 1
 
 cat > pom.xml << XML
 <?xml version="1.0" encoding="UTF-8"?>
@@ -124,9 +119,9 @@ cat > pom.xml << XML
 </project>
 XML
 
-echo "==================================="
+echo -e "\n==================================="
 echo "✅ 项目创建完成！"
-echo "▶  下次启动：web -r $ARTIFACT_ID"
+echo "▶ 启动命令：web -r $ARTIFACT_ID"
 echo "🌐 访问地址：http://localhost:8080/$ARTIFACT_ID"
 echo "==================================="
 EOF
@@ -134,14 +129,16 @@ EOF
 chmod +x /usr/local/bin/web
 
 # ==========================
-# 安装完成
+# 完成
 # ==========================
 echo -e "\n============================================="
-echo " ✅ 全部安装完成！"
+echo " ✅ 安装全部完成！"
 echo "============================================="
-echo -e "\n📌 验证环境："
+echo -e "\n🔍 环境检查："
 java -version
 mvn -v
-echo -e "\n📌 使用命令："
+echo JAVA_HOME=$JAVA_HOME
+
+echo -e "\n📌 使用方法："
 echo "  创建项目：web -g com.test -p myweb"
-echo "  快速运行：web -r myweb"
+echo "  启动项目：web -r myweb"
